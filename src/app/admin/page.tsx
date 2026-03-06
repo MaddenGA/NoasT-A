@@ -1,14 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 const ADMIN_PIN = "1234";
 
 export default function AdminPage() {
   const [pin, setPin] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
-  const [guards, setGuards] = useState<string[]>(["John", "Peter", "Musa"]);
+  const [guards, setGuards] = useState<string[]>([]);
   const [newGuard, setNewGuard] = useState("");
+
+  useEffect(() => {
+    if (authenticated) {
+      loadGuards();
+    }
+  }, [authenticated]);
+
+  async function loadGuards() {
+    const { data, error } = await supabase
+      .from("guards")
+      .select("name")
+      .eq("active", true)
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.error("Error loading guards:", error);
+      return;
+    }
+
+    if (data) {
+      setGuards(data.map((g) => g.name));
+    }
+  }
 
   function login() {
     if (pin === ADMIN_PIN) {
@@ -18,15 +42,35 @@ export default function AdminPage() {
     }
   }
 
-  function addGuard() {
+  async function addGuard() {
     const name = newGuard.trim();
     if (!name) return;
-    setGuards([...guards, name]);
+
+    const { error } = await supabase.from("guards").insert([{ name }]);
+
+    if (error) {
+      console.error("Error adding guard:", error);
+      alert("Could not add guard. The name may already exist.");
+      return;
+    }
+
     setNewGuard("");
+    loadGuards();
   }
 
-  function removeGuard(name: string) {
-    setGuards(guards.filter((g) => g !== name));
+  async function removeGuard(name: string) {
+    const { error } = await supabase
+      .from("guards")
+      .update({ active: false })
+      .eq("name", name);
+
+    if (error) {
+      console.error("Error removing guard:", error);
+      alert("Could not remove guard.");
+      return;
+    }
+
+    loadGuards();
   }
 
   if (!authenticated) {

@@ -1,13 +1,23 @@
-export default function HomePage() {
+export default function Home() {
   return (
-    <main className="px-6 py-10 text-center space-y-4">
-      <h1 className="text-3xl font-semibold tracking-tight">
-        Naos Attendance MVP
-      </h1>
-      <p className="text-lg text-slate-200">
-        Security guard time and attendance system
-      </p>
+    <main style={{ padding: 40, fontFamily: "Arial" }}>
+      <h1>Naos Attendance MVP</h1>
+      <p>Security guard time and attendance system</p>
+
+      <div style={{ marginTop: 40 }}>
+        <button
+          style={{
+            padding: "15px 30px",
+            fontSize: 18,
+            background: "#1e40af",
+            color: "white",
+            borderRadius: 8,
+            border: "none",
+          }}
+        >
+          Check In
+        </button>
+      </div>
     </main>
   );
 }
-

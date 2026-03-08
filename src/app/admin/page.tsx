@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
 const ADMIN_PIN = "1234";
 
 export default function AdminPage() {
+
   const [pin, setPin] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
-  const [guards, setGuards] = useState<string[]>([]);
+  const [guards, setGuards] = useState<any[]>([]);
   const [newGuard, setNewGuard] = useState("");
 
   useEffect(() => {
@@ -20,17 +21,10 @@ export default function AdminPage() {
   async function loadGuards() {
     const { data, error } = await supabase
       .from("guards")
-      .select("name")
-      .eq("active", true)
-      .order("name", { ascending: true });
+      .select("*");
 
-    if (error) {
-      console.error("Error loading guards:", error);
-      return;
-    }
-
-    if (data) {
-      setGuards(data.map((g) => g.name));
+    if (!error && data) {
+      setGuards(data);
     }
   }
 
@@ -46,11 +40,12 @@ export default function AdminPage() {
     const name = newGuard.trim();
     if (!name) return;
 
-    const { error } = await supabase.from("guards").insert([{ name }]);
+    const { error } = await supabase
+      .from("guards")
+      .insert([{ name }]);
 
     if (error) {
-      console.error("Error adding guard:", error);
-      alert("Could not add guard. The name may already exist.");
+      alert(error.message);
       return;
     }
 
@@ -58,64 +53,54 @@ export default function AdminPage() {
     loadGuards();
   }
 
-  async function removeGuard(name: string) {
-    const { error } = await supabase
+  async function removeGuard(id: number) {
+    await supabase
       .from("guards")
-      .update({ active: false })
-      .eq("name", name);
-
-    if (error) {
-      console.error("Error removing guard:", error);
-      alert("Could not remove guard.");
-      return;
-    }
+      .delete()
+      .eq("id", id);
 
     loadGuards();
   }
 
   if (!authenticated) {
     return (
-      <main style={{ padding: 40, fontFamily: "Arial" }}>
+      <main style={{ padding: 40 }}>
         <h1>Admin Login</h1>
-
         <input
           type="password"
-          placeholder="Enter admin PIN"
           value={pin}
           onChange={(e) => setPin(e.target.value)}
-          style={{ padding: 10, fontSize: 16 }}
+          placeholder="Enter PIN"
         />
-
-        <div style={{ marginTop: 20 }}>
-          <button onClick={login}>Login</button>
-        </div>
+        <button onClick={login}>Login</button>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 40, fontFamily: "Arial" }}>
+    <main style={{ padding: 40 }}>
       <h1>Admin Panel</h1>
 
       <h3>Add Guard</h3>
 
       <input
-        placeholder="Guard name"
         value={newGuard}
         onChange={(e) => setNewGuard(e.target.value)}
-        style={{ padding: 10 }}
+        placeholder="Guard name"
       />
 
-      <button onClick={addGuard} style={{ marginLeft: 10 }}>
-        Add
-      </button>
+      <button onClick={addGuard}>Add</button>
 
       <h3 style={{ marginTop: 30 }}>Existing Guards</h3>
 
       {guards.map((g) => (
-        <div key={g} style={{ marginTop: 10 }}>
-          {g}
-          <button onClick={() => removeGuard(g)} style={{ marginLeft: 10 }}>
+        <div key={g.id} style={{ marginTop: 10 }}>
+          {g.name}
+
+          <button
+            onClick={() => removeGuard(g.id)}
+            style={{ marginLeft: 10 }}
+          >
             Remove
           </button>
         </div>

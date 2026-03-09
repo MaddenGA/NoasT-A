@@ -31,6 +31,24 @@ export default function Home() {
       return;
     }
 
+    const { data: existingShift, error: findError } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("guard_id", selectedGuard)
+      .is("check_out", null)
+      .limit(1);
+
+    if (findError) {
+      console.error("Failed to check existing shift", findError);
+      alert("Could not verify guard status");
+      return;
+    }
+
+    if (existingShift && existingShift.length > 0) {
+      alert("Guard is already checked in. Please check out first.");
+      return;
+    }
+
     const { error } = await supabase.from("attendance").insert([
       {
         guard_id: selectedGuard,

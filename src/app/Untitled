@@ -1,0 +1,3 @@
+git add .
+git commit -m "Connect main page to guards and attendance"
+git push

@@ -3,18 +3,43 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type Guard = {
+  id: string;
+  name: string;
+};
+
+type AttendanceRecord = {
+  id: string;
+  guard_id: string;
+  check_in: string;
+  check_out: string | null;
+};
+
 export default function Home() {
-  const [guards, setGuards] = useState<any[]>([]);
+  const [guards, setGuards] = useState<Guard[]>([]);
   const [selectedGuard, setSelectedGuard] = useState("");
+  const [selectedGuardStatus, setSelectedGuardStatus] =
+    useState<AttendanceRecord | null>(null);
+  const [guardsOnSite, setGuardsOnSite] = useState<AttendanceRecord[]>([]);
 
   useEffect(() => {
     loadGuards();
+    loadGuardsOnSite();
   }, []);
+
+  useEffect(() => {
+    if (selectedGuard) {
+      loadSelectedGuardStatus(selectedGuard);
+    } else {
+      setSelectedGuardStatus(null);
+    }
+  }, [selectedGuard]);
 
   const loadGuards = async () => {
     const { data, error } = await supabase
       .from("guards")
-      .select("*")
+      .select("id, name")
+      .eq("active", true)
       .order("name", { ascending: true });
 
     if (error) {
@@ -23,6 +48,51 @@ export default function Home() {
     }
 
     setGuards(data || []);
+  };
+
+  const loadSelectedGuardStatus = async (guardId: string) => {
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("id, guard_id, check_in, check_out")
+      .eq("guard_id", guardId)
+      .is("check_out", null)
+      .order("check_in", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error("Failed to load selected guard status", error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      setSelectedGuardStatus(data[0]);
+    } else {
+      setSelectedGuardStatus(null);
+    }
+  };
+
+  const loadGuardsOnSite = async () => {
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("id, guard_id, check_in, check_out")
+      .is("check_out", null)
+      .order("check_in", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load guards on site", error);
+      return;
+    }
+
+    setGuardsOnSite(data || []);
+  };
+
+  const getGuardName = (guardId: string) => {
+    const guard = guards.find((g) => g.id === guardId);
+    return guard ? guard.name : guardId;
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
   };
 
   const checkIn = async () => {
@@ -63,6 +133,8 @@ export default function Home() {
     }
 
     alert("Checked in successfully");
+    loadSelectedGuardStatus(selectedGuard);
+    loadGuardsOnSite();
   };
 
   const checkOut = async () => {
@@ -106,10 +178,12 @@ export default function Home() {
     }
 
     alert("Checked out successfully");
+    loadSelectedGuardStatus(selectedGuard);
+    loadGuardsOnSite();
   };
 
   return (
-    <main style={{ padding: 40, fontFamily: "Arial", maxWidth: 500 }}>
+    <main style={{ padding: 40, fontFamily: "Arial", maxWidth: 700 }}>
       <h1>Naos Attendance MVP</h1>
       <p>Security guard time and attendance system</p>
 
@@ -142,6 +216,27 @@ export default function Home() {
           ))}
         </select>
 
+        {selectedGuard && (
+          <div
+            style={{
+              marginBottom: 20,
+              padding: 15,
+              borderRadius: 8,
+              background: "#f3f4f6",
+            }}
+          >
+            <strong>Status:</strong>{" "}
+            {selectedGuardStatus ? (
+              <>
+                Checked in at{" "}
+                <span>{formatDateTime(selectedGuardStatus.check_in)}</span>
+              </>
+            ) : (
+              "Not currently checked in"
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 12 }}>
           <button
             onClick={checkIn}
@@ -173,11 +268,22 @@ export default function Home() {
             Check Out
           </button>
         </div>
+      </div>
 
-        {selectedGuard && (
-          <p style={{ marginTop: 20 }}>
-            Selected guard ID: <strong>{selectedGuard}</strong>
-          </p>
+      <div style={{ marginTop: 40 }}>
+        <h2>Currently On Site</h2>
+
+        {guardsOnSite.length === 0 ? (
+          <p>No guards currently checked in.</p>
+        ) : (
+          <ul style={{ paddingLeft: 20 }}>
+            {guardsOnSite.map((record) => (
+              <li key={record.id} style={{ marginBottom: 8 }}>
+                <strong>{getGuardName(record.guard_id)}</strong> — checked in at{" "}
+                {formatDateTime(record.check_in)}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </main>

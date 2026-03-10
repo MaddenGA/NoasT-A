@@ -39,7 +39,6 @@ export default function Home() {
     const { data, error } = await supabase
       .from("guards")
       .select("id, name")
-      .eq("active", true)
       .order("name", { ascending: true });
 
     if (error) {
@@ -53,14 +52,14 @@ export default function Home() {
   const loadSelectedGuardStatus = async (guardId: string) => {
     const { data, error } = await supabase
       .from("attendance")
-      .select("id, guard_id, check_in, check_out")
+      .select("*")
       .eq("guard_id", guardId)
       .is("check_out", null)
       .order("check_in", { ascending: false })
       .limit(1);
 
     if (error) {
-      console.error("Failed to load selected guard status", error);
+      console.error("Failed to load guard status", error);
       return;
     }
 
@@ -74,7 +73,7 @@ export default function Home() {
   const loadGuardsOnSite = async () => {
     const { data, error } = await supabase
       .from("attendance")
-      .select("id, guard_id, check_in, check_out")
+      .select("*")
       .is("check_out", null)
       .order("check_in", { ascending: false });
 
@@ -101,18 +100,12 @@ export default function Home() {
       return;
     }
 
-    const { data: existingShift, error: findError } = await supabase
+    const { data: existingShift } = await supabase
       .from("attendance")
       .select("*")
       .eq("guard_id", selectedGuard)
       .is("check_out", null)
       .limit(1);
-
-    if (findError) {
-      console.error("Failed to check existing shift", findError);
-      alert("Could not verify guard status");
-      return;
-    }
 
     if (existingShift && existingShift.length > 0) {
       alert("Guard is already checked in. Please check out first.");
@@ -143,19 +136,13 @@ export default function Home() {
       return;
     }
 
-    const { data, error: findError } = await supabase
+    const { data } = await supabase
       .from("attendance")
       .select("*")
       .eq("guard_id", selectedGuard)
       .is("check_out", null)
       .order("check_in", { ascending: false })
       .limit(1);
-
-    if (findError) {
-      console.error("Failed to find open shift", findError);
-      alert("Check-out failed");
-      return;
-    }
 
     if (!data || data.length === 0) {
       alert("No open check-in found for this guard");
@@ -164,15 +151,15 @@ export default function Home() {
 
     const openShift = data[0];
 
-    const { error: updateError } = await supabase
+    const { error } = await supabase
       .from("attendance")
       .update({
         check_out: new Date().toISOString(),
       })
       .eq("id", openShift.id);
 
-    if (updateError) {
-      console.error("Check-out failed", updateError);
+    if (error) {
+      console.error("Check-out failed", error);
       alert("Check-out failed");
       return;
     }
@@ -229,7 +216,7 @@ export default function Home() {
             {selectedGuardStatus ? (
               <>
                 Checked in at{" "}
-                <span>{formatDateTime(selectedGuardStatus.check_in)}</span>
+                {formatDateTime(selectedGuardStatus.check_in)}
               </>
             ) : (
               "Not currently checked in"
@@ -240,14 +227,16 @@ export default function Home() {
         <div style={{ display: "flex", gap: 12 }}>
           <button
             onClick={checkIn}
+            disabled={!!selectedGuardStatus}
             style={{
               padding: "15px 30px",
               fontSize: 16,
-              background: "#2563eb",
+              background: selectedGuardStatus ? "#9ca3af" : "#2563eb",
               color: "white",
               borderRadius: 8,
               border: "none",
-              cursor: "pointer",
+              cursor: selectedGuardStatus ? "not-allowed" : "pointer",
+              opacity: selectedGuardStatus ? 0.7 : 1,
             }}
           >
             Check In

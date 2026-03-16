@@ -100,12 +100,18 @@ export default function Home() {
       return;
     }
 
-    const { data: existingShift } = await supabase
+    const { data: existingShift, error: findError } = await supabase
       .from("attendance")
       .select("*")
       .eq("guard_id", selectedGuard)
       .is("check_out", null)
       .limit(1);
+
+    if (findError) {
+      console.error("Failed to check existing shift", findError);
+      alert("Could not verify guard status");
+      return;
+    }
 
     if (existingShift && existingShift.length > 0) {
       alert("Guard is already checked in. Please check out first.");
@@ -136,13 +142,19 @@ export default function Home() {
       return;
     }
 
-    const { data } = await supabase
+    const { data, error: findError } = await supabase
       .from("attendance")
       .select("*")
       .eq("guard_id", selectedGuard)
       .is("check_out", null)
       .order("check_in", { ascending: false })
       .limit(1);
+
+    if (findError) {
+      console.error("Failed to find open shift", findError);
+      alert("Check-out failed");
+      return;
+    }
 
     if (!data || data.length === 0) {
       alert("No open check-in found for this guard");
@@ -151,15 +163,15 @@ export default function Home() {
 
     const openShift = data[0];
 
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from("attendance")
       .update({
         check_out: new Date().toISOString(),
       })
       .eq("id", openShift.id);
 
-    if (error) {
-      console.error("Check-out failed", error);
+    if (updateError) {
+      console.error("Check-out failed", updateError);
       alert("Check-out failed");
       return;
     }
@@ -215,8 +227,7 @@ export default function Home() {
             <strong>Status:</strong>{" "}
             {selectedGuardStatus ? (
               <>
-                Checked in at{" "}
-                {formatDateTime(selectedGuardStatus.check_in)}
+                Checked in at {formatDateTime(selectedGuardStatus.check_in)}
               </>
             ) : (
               "Not currently checked in"
@@ -227,16 +238,20 @@ export default function Home() {
         <div style={{ display: "flex", gap: 12 }}>
           <button
             onClick={checkIn}
-            disabled={!!selectedGuardStatus}
+            disabled={!selectedGuard || !!selectedGuardStatus}
             style={{
               padding: "15px 30px",
               fontSize: 16,
-              background: selectedGuardStatus ? "#9ca3af" : "#2563eb",
+              background:
+                !selectedGuard || !!selectedGuardStatus ? "#9ca3af" : "#2563eb",
               color: "white",
               borderRadius: 8,
               border: "none",
-              cursor: selectedGuardStatus ? "not-allowed" : "pointer",
-              opacity: selectedGuardStatus ? 0.7 : 1,
+              cursor:
+                !selectedGuard || !!selectedGuardStatus
+                  ? "not-allowed"
+                  : "pointer",
+              opacity: !selectedGuard || !!selectedGuardStatus ? 0.7 : 1,
             }}
           >
             Check In
@@ -244,14 +259,20 @@ export default function Home() {
 
           <button
             onClick={checkOut}
+            disabled={!selectedGuard || !selectedGuardStatus}
             style={{
               padding: "15px 30px",
               fontSize: 16,
-              background: "#374151",
+              background:
+                !selectedGuard || !selectedGuardStatus ? "#9ca3af" : "#374151",
               color: "white",
               borderRadius: 8,
               border: "none",
-              cursor: "pointer",
+              cursor:
+                !selectedGuard || !selectedGuardStatus
+                  ? "not-allowed"
+                  : "pointer",
+              opacity: !selectedGuard || !selectedGuardStatus ? 0.7 : 1,
             }}
           >
             Check Out

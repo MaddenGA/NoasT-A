@@ -22,10 +22,15 @@ export default function Home() {
     useState<AttendanceRecord | null>(null);
   const [guardsOnSite, setGuardsOnSite] = useState<AttendanceRecord[]>([]);
   const [now, setNow] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     loadGuards();
     loadGuardsOnSite();
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   useEffect(() => {
@@ -344,7 +349,7 @@ export default function Home() {
                 marginBottom: 8,
               }}
             >
-              {formatCurrentDate(now)}
+              {mounted ? formatCurrentDate(now) : "Loading date..."}
             </div>
             <div
               style={{
@@ -354,7 +359,7 @@ export default function Home() {
                 marginBottom: 20,
               }}
             >
-              {formatCurrentTime(now)}
+              {mounted ? formatCurrentTime(now) : "--:--:--"}
             </div>
 
             <div

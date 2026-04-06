@@ -8,7 +8,7 @@ type Guard = {
   name: string;
 };
 
-type AttendanceRecord = {
+type Attendance = {
   id: string;
   guard_id: string;
   check_in: string;
@@ -17,69 +17,59 @@ type AttendanceRecord = {
 
 type ViewMode = "day" | "week" | "month";
 
-type DayCell = {
-  dateKey: string;
-  hasAttendance: boolean;
-  firstCheckIn: string | null;
-  lastCheckOut: string | null;
-  totalMinutes: number;
-  records: AttendanceRecord[];
-};
-
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function formatDateKey(date: Date) {
+  return date.toISOString().split("T")[0];
 }
 
-function endOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
 }
 
-function startOfWeekMonday(date: Date) {
-  const d = startOfDay(date);
-  const day = d.getDay();
+function endOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function startOfWeek(d: Date) {
+  const date = new Date(d);
+  const day = date.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d;
+  date.setDate(date.getDate() + diff);
+  return startOfDay(date);
 }
 
-function endOfWeekSunday(date: Date) {
-  const start = startOfWeekMonday(date);
+function endOfWeek(d: Date) {
+  const start = startOfWeek(d);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return endOfDay(end);
+}
+
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function endOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+function getDateRange(mode: ViewMode, date: Date) {
+  if (mode === "day") return { start: startOfDay(date), end: endOfDay(date) };
+  if (mode === "week") return { start: startOfWeek(date), end: endOfWeek(date) };
+  return { start: startOfMonth(date), end: endOfMonth(date) };
+}
+
+function eachDay(start: Date, end: Date) {
+  const days: Date[] = [];
   const d = new Date(start);
-  d.setDate(start.getDate() + 6);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function startOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-}
-
-function endOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-}
-
-function formatDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = `${date.getMonth() + 1}`.padStart(2, "0");
-  const d = `${date.getDate()}`.padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function formatDateShort(date: Date) {
-  return date.toLocaleDateString([], {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatDayName(date: Date) {
-  return date.toLocaleDateString([], {
-    weekday: "short",
-  });
+  while (d <= end) {
+    days.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return days;
 }
 
 function formatDateLong(date: Date) {
@@ -91,186 +81,187 @@ function formatDateLong(date: Date) {
   });
 }
 
-function formatTimeOnly(dateString: string) {
-  return new Date(dateString).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatMinutesAsHours(minutes: number) {
-  const hrs = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hrs}h ${mins}m`;
-}
-
-function dateKey(date: Date) {
-  return formatDateInputValue(date);
-}
-
-function eachDayBetween(start: Date, end: Date) {
-  const dates: Date[] = [];
-  const current = startOfDay(start);
-  const last = startOfDay(end);
-
-  while (current <= last) {
-    dates.push(new Date(current));
-    current.setDate(current.getDate() + 1);
+function formatRangeLabel(mode: ViewMode, start: Date, end: Date) {
+  if (mode === "day") {
+    return formatDateLong(start);
   }
 
-  return dates;
+  if (mode === "week") {
+    return `${start.toLocaleDateString([], {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })} - ${end.toLocaleDateString([], {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })}`;
+  }
+
+  return start.toLocaleDateString([], {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export default function HistoryPage() {
   const [guards, setGuards] = useState<Guard[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [records, setRecords] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [view, setView] = useState<ViewMode>("week");
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
-  const range = useMemo(() => {
-    if (viewMode === "day") {
-      return {
-        start: startOfDay(selectedDate),
-        end: endOfDay(selectedDate),
-      };
-    }
-
-    if (viewMode === "week") {
-      return {
-        start: startOfWeekMonday(selectedDate),
-        end: endOfWeekSunday(selectedDate),
-      };
-    }
-
-    return {
-      start: startOfMonth(selectedDate),
-      end: endOfMonth(selectedDate),
-    };
-  }, [viewMode, selectedDate]);
-
-  const visibleDates = useMemo(() => {
-    return eachDayBetween(range.start, range.end);
-  }, [range]);
+  const range = useMemo(() => getDateRange(view, selectedDate), [view, selectedDate]);
+  const days = useMemo(() => eachDay(range.start, range.end), [range]);
 
   useEffect(() => {
     loadGuards();
   }, []);
 
   useEffect(() => {
-    loadAttendanceForRange();
+    loadAttendance();
   }, [range.start.getTime(), range.end.getTime()]);
 
-  const loadGuards = async () => {
-    const { data, error } = await supabase
-      .from("guards")
-      .select("id, name")
-      .order("name", { ascending: true });
+  async function loadGuards() {
+    const { data, error } = await supabase.from("guards").select("*").order("name");
 
     if (error) {
       console.error("Failed to load guards", error);
-      alert("Failed to load guards");
       return;
     }
 
     setGuards(data || []);
-  };
+  }
 
-  const loadAttendanceForRange = async () => {
+  async function loadAttendance() {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("attendance")
-      .select("*")
-      .gte("check_in", range.start.toISOString())
-      .lte("check_in", range.end.toISOString())
-      .order("check_in", { ascending: true });
+    const res = await fetch("/api/attendance");
+    const data = await res.json();
 
-    if (error) {
-      console.error("Failed to load attendance", error);
-      alert("Failed to load attendance");
-      setLoading(false);
-      return;
+    if (Array.isArray(data)) {
+      const filtered = data.filter((r: Attendance) => {
+        const checkIn = new Date(r.check_in);
+        return checkIn >= range.start && checkIn <= range.end;
+      });
+      setRecords(filtered);
+    } else {
+      console.error("Attendance API error:", data);
+      setRecords([]);
     }
 
-    setAttendance(data || []);
     setLoading(false);
-  };
+  }
+
+  const guardNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    guards.forEach((g) => {
+      map[g.id] = g.name;
+    });
+    return map;
+  }, [guards]);
 
   const roster = useMemo(() => {
-    const map: Record<string, Record<string, DayCell>> = {};
+    const map: Record<string, Record<string, Attendance[]>> = {};
 
-    for (const guard of guards) {
-      map[guard.id] = {};
-      for (const d of visibleDates) {
-        map[guard.id][dateKey(d)] = {
-          dateKey: dateKey(d),
-          hasAttendance: false,
-          firstCheckIn: null,
-          lastCheckOut: null,
-          totalMinutes: 0,
-          records: [],
-        };
+    guards.forEach((g) => {
+      map[g.id] = {};
+      days.forEach((d) => {
+        map[g.id][formatDateKey(d)] = [];
+      });
+    });
+
+    records.forEach((r) => {
+      const key = formatDateKey(new Date(r.check_in));
+      if (map[r.guard_id] && map[r.guard_id][key]) {
+        map[r.guard_id][key].push(r);
       }
-    }
-
-    for (const record of attendance) {
-      const recordDate = new Date(record.check_in);
-      const key = dateKey(recordDate);
-
-      if (!map[record.guard_id] || !map[record.guard_id][key]) continue;
-
-      const cell = map[record.guard_id][key];
-      cell.records.push(record);
-      cell.hasAttendance = true;
-
-      if (!cell.firstCheckIn || new Date(record.check_in) < new Date(cell.firstCheckIn)) {
-        cell.firstCheckIn = record.check_in;
-      }
-
-      if (record.check_out) {
-        if (!cell.lastCheckOut || new Date(record.check_out) > new Date(cell.lastCheckOut)) {
-          cell.lastCheckOut = record.check_out;
-        }
-      }
-
-      const start = new Date(record.check_in).getTime();
-      const end = record.check_out ? new Date(record.check_out).getTime() : Date.now();
-      cell.totalMinutes += Math.max(0, Math.floor((end - start) / 60000));
-    }
+    });
 
     return map;
-  }, [guards, attendance, visibleDates]);
+  }, [guards, records, days]);
 
   const stats = useMemo(() => {
-    const totalShifts = attendance.length;
-    const openShifts = attendance.filter((a) => !a.check_out).length;
-    const closedShifts = attendance.filter((a) => !!a.check_out).length;
+    let workedMinutes = 0;
+    const activeGuards = new Set<string>();
 
-    const activeGuards = new Set(attendance.map((a) => a.guard_id)).size;
+    records.forEach((r) => {
+      activeGuards.add(r.guard_id);
+      const start = new Date(r.check_in).getTime();
+      const end = r.check_out ? new Date(r.check_out).getTime() : start;
+      workedMinutes += Math.max(0, Math.floor((end - start) / 60000));
+    });
 
     return {
-      totalShifts,
-      openShifts,
-      closedShifts,
-      activeGuards,
+      totalGuards: guards.length,
+      activeGuards: activeGuards.size,
+      shiftRecords: records.length,
+      workedHours: Math.floor(workedMinutes / 60),
     };
-  }, [attendance]);
+  }, [records, guards]);
 
-  const rangeLabel = useMemo(() => {
-    if (viewMode === "day") {
-      return formatDateLong(range.start);
-    }
+  const rangeLabel = useMemo(
+    () => formatRangeLabel(view, range.start, range.end),
+    [view, range.start, range.end]
+  );
 
-    if (viewMode === "week") {
-      return `${formatDateLong(range.start)} – ${formatDateLong(range.end)}`;
-    }
+  function exportToCsv() {
+    const header = [
+      "Guard",
+      ...days.map((d) =>
+        d.toLocaleDateString([], {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      ),
+      "Total Hours",
+    ];
 
-    return range.start.toLocaleDateString([], {
-      month: "long",
-      year: "numeric",
+    const rows = guards.map((g) => {
+      let totalMinutes = 0;
+
+      const row = days.map((d) => {
+        const key = formatDateKey(d);
+        const entries = roster[g.id]?.[key] || [];
+
+        let minutes = 0;
+
+        entries.forEach((e) => {
+          const start = new Date(e.check_in).getTime();
+          const end = e.check_out ? new Date(e.check_out).getTime() : start;
+          minutes += Math.max(0, Math.floor((end - start) / 60000));
+        });
+
+        totalMinutes += minutes;
+        const hours = Math.floor(minutes / 60);
+
+        return minutes > 0 ? `${hours}h` : "-";
+      });
+
+      return [guardNameMap[g.id] || "Unknown", ...row, `${Math.floor(totalMinutes / 60)}h`];
     });
-  }, [range, viewMode]);
+
+    const csv = [header, ...rows]
+      .map((row) =>
+        row
+          .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    const safeRange = rangeLabel.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_");
+    link.href = url;
+    link.setAttribute("download", `attendance_roster_${view}_${safeRange}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <main
@@ -295,7 +286,7 @@ export default function HistoryPage() {
             maxWidth: 1280,
             margin: "0 auto",
             display: "grid",
-            gridTemplateColumns: "1.35fr 1fr",
+            gridTemplateColumns: "1.4fr 1fr",
             gap: 24,
           }}
         >
@@ -322,7 +313,7 @@ export default function HistoryPage() {
                   display: "inline-block",
                 }}
               />
-              Attendance Roster
+              Attendance Reporting
             </div>
 
             <h1
@@ -341,11 +332,589 @@ export default function HistoryPage() {
               style={{
                 marginTop: 16,
                 marginBottom: 0,
-                maxWidth: 700,
+                maxWidth: 720,
                 fontSize: 18,
                 lineHeight: 1.6,
                 color: "rgba(255,255,255,0.88)",
               }}
             >
-              Review guard attendance in a roster format across day, week, or
-              month views. Track who worked, when they checked
+              Review attendance in a roster format across day, week, and month
+              views. Track participation, worked hours, and coverage across your
+              guard team.
+            </p>
+          </div>
+
+          <div
+            style={{
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              borderRadius: 24,
+              padding: 24,
+              backdropFilter: "blur(8px)",
+              boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+              alignSelf: "start",
+            }}
+          >
+            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>
+              Selected Range
+            </div>
+
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 800,
+                lineHeight: 1.15,
+                marginBottom: 20,
+              }}
+            >
+              {rangeLabel}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  borderRadius: 18,
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Guards</div>
+                <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
+                  {stats.totalGuards}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  borderRadius: 18,
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Active Guards</div>
+                <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
+                  {stats.activeGuards}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  borderRadius: 18,
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Shift Records</div>
+                <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
+                  {stats.shiftRecords}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  borderRadius: 18,
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Worked Hours</div>
+                <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
+                  {stats.workedHours}h
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div
+        style={{
+          maxWidth: 1280,
+          margin: "-80px auto 0 auto",
+          padding: "0 24px 40px 24px",
+        }}
+      >
+        <div
+          style={{
+            background: "white",
+            borderRadius: 28,
+            boxShadow: "0 20px 50px rgba(15, 23, 42, 0.10)",
+            border: "1px solid #e5e7eb",
+            padding: 28,
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 20,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginBottom: 24,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#0f766e",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.6,
+                  marginBottom: 6,
+                }}
+              >
+                Roster Controls
+              </div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 28,
+                  lineHeight: 1.1,
+                  letterSpacing: -0.6,
+                }}
+              >
+                View Attendance by Period
+              </h2>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  background: "#ecfdf5",
+                  color: "#166534",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {loading ? "Refreshing roster..." : `${view.toUpperCase()} view active`}
+              </div>
+
+              <button
+                onClick={exportToCsv}
+                style={{
+                  padding: "12px 18px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  background: "#111827",
+                  color: "#ffffff",
+                  borderRadius: 14,
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Export to Excel
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginBottom: 22,
+            }}
+          >
+            {(["day", "week", "month"] as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setView(mode)}
+                style={{
+                  padding: "12px 18px",
+                  borderRadius: 14,
+                  border: view === mode ? "2px solid #111827" : "1px solid #d1d5db",
+                  background: view === mode ? "#111827" : "#ffffff",
+                  color: view === mode ? "#ffffff" : "#111827",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  fontSize: 14,
+                }}
+              >
+                {mode.toUpperCase()}
+              </button>
+            ))}
+
+            <input
+              type="date"
+              value={formatDateKey(selectedDate)}
+              onChange={(e) => setSelectedDate(new Date(e.target.value))}
+              style={{
+                padding: "12px 16px",
+                borderRadius: 14,
+                border: "1px solid #d1d5db",
+                fontSize: 15,
+                color: "#111827",
+                background: "#fff",
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderRadius: 999,
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+                fontSize: 14,
+                color: "#334155",
+                fontWeight: 600,
+              }}
+            >
+              <span
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 4,
+                  background: "#dcfce7",
+                  border: "1px solid #86efac",
+                  display: "inline-block",
+                }}
+              />
+              Worked shift
+            </div>
+
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderRadius: 999,
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+                fontSize: 14,
+                color: "#334155",
+                fontWeight: 600,
+              }}
+            >
+              <span
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 4,
+                  background: "#f1f5f9",
+                  border: "1px solid #cbd5e1",
+                  display: "inline-block",
+                }}
+              />
+              No recorded shift
+            </div>
+
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderRadius: 999,
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+                fontSize: 14,
+                color: "#334155",
+                fontWeight: 600,
+              }}
+            >
+              <span
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 4,
+                  background: "#0ea5e9",
+                  display: "inline-block",
+                }}
+              />
+              Row total hours
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "white",
+            borderRadius: 28,
+            boxShadow: "0 16px 40px rgba(15, 23, 42, 0.08)",
+            border: "1px solid #e5e7eb",
+            padding: 28,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 20,
+              alignItems: "center",
+              marginBottom: 22,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#0f766e",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginBottom: 6,
+                }}
+              >
+                Attendance Matrix
+              </div>
+              <h2
+                style={{
+                  marginTop: 0,
+                  marginBottom: 0,
+                  fontSize: 30,
+                  lineHeight: 1.1,
+                }}
+              >
+                Guard Roster
+              </h2>
+            </div>
+
+            <button
+              onClick={loadAttendance}
+              style={{
+                padding: "12px 18px",
+                fontSize: 14,
+                fontWeight: 700,
+                background: "#ecfeff",
+                color: "#0f766e",
+                borderRadius: 14,
+                border: "1px solid #a5f3fc",
+                cursor: "pointer",
+              }}
+            >
+              Refresh
+            </button>
+          </div>
+
+          {loading ? (
+            <div
+              style={{
+                padding: 24,
+                borderRadius: 20,
+                background: "#f8fafc",
+                color: "#6b7280",
+                fontSize: 15,
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              Loading roster data...
+            </div>
+          ) : (
+            <div
+              style={{
+                overflowX: "auto",
+                borderRadius: 20,
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "separate",
+                  borderSpacing: 0,
+                  minWidth: 980,
+                  background: "#fff",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        position: "sticky",
+                        left: 0,
+                        background: "#f8fafc",
+                        zIndex: 2,
+                        textAlign: "left",
+                        padding: "16px 14px",
+                        fontSize: 16,
+                        fontWeight: 800,
+                        borderBottom: "1px solid #e5e7eb",
+                        minWidth: 220,
+                      }}
+                    >
+                      Guard
+                    </th>
+
+                    {days.map((d, i) => (
+                      <th
+                        key={i}
+                        style={{
+                          background: "#f8fafc",
+                          padding: "14px 10px",
+                          textAlign: "center",
+                          borderBottom: "1px solid #e5e7eb",
+                          minWidth: 84,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#6b7280",
+                            fontWeight: 700,
+                            marginBottom: 4,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {d.toLocaleDateString([], { weekday: "short" })}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 800,
+                            color: "#111827",
+                          }}
+                        >
+                          {d.getDate()}
+                        </div>
+                      </th>
+                    ))}
+
+                    <th
+                      style={{
+                        background: "#f8fafc",
+                        padding: "14px 10px",
+                        textAlign: "center",
+                        borderBottom: "1px solid #e5e7eb",
+                        minWidth: 100,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#6b7280",
+                          fontWeight: 700,
+                          marginBottom: 4,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Summary
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 18,
+                          fontWeight: 800,
+                          color: "#111827",
+                        }}
+                      >
+                        Total
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {guards.map((g) => {
+                    let totalMinutes = 0;
+
+                    return (
+                      <tr key={g.id}>
+                        <td
+                          style={{
+                            position: "sticky",
+                            left: 0,
+                            background: "#ffffff",
+                            zIndex: 1,
+                            padding: "14px",
+                            fontWeight: 700,
+                            fontSize: 16,
+                            borderBottom: "1px solid #f1f5f9",
+                            borderRight: "1px solid #f1f5f9",
+                            minWidth: 220,
+                          }}
+                        >
+                          {guardNameMap[g.id] || "Unknown"}
+                        </td>
+
+                        {days.map((d, i) => {
+                          const key = formatDateKey(d);
+                          const entries = roster[g.id]?.[key] || [];
+
+                          let minutes = 0;
+
+                          entries.forEach((e) => {
+                            const start = new Date(e.check_in).getTime();
+                            const end = e.check_out
+                              ? new Date(e.check_out).getTime()
+                              : start;
+
+                            minutes += Math.max(0, Math.floor((end - start) / 60000));
+                          });
+
+                          totalMinutes += minutes;
+                          const hours = Math.floor(minutes / 60);
+
+                          return (
+                            <td
+                              key={i}
+                              style={{
+                                padding: "10px 8px",
+                                textAlign: "center",
+                                borderBottom: "1px solid #f1f5f9",
+                                borderRight: "1px solid #f8fafc",
+                                background: minutes > 0 ? "#dcfce7" : "#f8fafc",
+                                color: minutes > 0 ? "#166534" : "#94a3b8",
+                                fontWeight: minutes > 0 ? 800 : 600,
+                                fontSize: 15,
+                              }}
+                            >
+                              {minutes > 0 ? `${hours}h` : "-"}
+                            </td>
+                          );
+                        })}
+
+                        <td
+                          style={{
+                            padding: "10px",
+                            fontWeight: 800,
+                            background: "#0ea5e9",
+                            color: "white",
+                            textAlign: "center",
+                            borderBottom: "1px solid #f1f5f9",
+                            fontSize: 16,
+                          }}
+                        >
+                          {Math.floor(totalMinutes / 60)}h
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}

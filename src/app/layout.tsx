@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import AppNav from "@/components/AppNav";
 
 export const metadata: Metadata = {
-  title: "Naos Attendance MVP",
-  description: "Security guard time and attendance system for Naos Complex"
+  title: "Naos Attendance",
+  description: "Security guard attendance platform",
 };
 
-export default function RootLayout(props: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
-      <body className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
-        {props.children}
+      <body style={{ margin: 0 }}>
+        <AppNav />
+        {children}
       </body>
     </html>
   );
 }
-

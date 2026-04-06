@@ -17,6 +17,8 @@ type Attendance = {
 
 type ViewMode = "day" | "week" | "month";
 
+const SA_TIMEZONE = "Africa/Johannesburg";
+
 function formatDateKey(date: Date) {
   return date.toISOString().split("T")[0];
 }
@@ -73,11 +75,12 @@ function eachDay(start: Date, end: Date) {
 }
 
 function formatDateLong(date: Date) {
-  return date.toLocaleDateString([], {
+  return date.toLocaleDateString("en-ZA", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: SA_TIMEZONE,
   });
 }
 
@@ -87,20 +90,40 @@ function formatRangeLabel(mode: ViewMode, start: Date, end: Date) {
   }
 
   if (mode === "week") {
-    return `${start.toLocaleDateString([], {
+    return `${start.toLocaleDateString("en-ZA", {
       day: "numeric",
       month: "short",
       year: "numeric",
-    })} - ${end.toLocaleDateString([], {
+      timeZone: SA_TIMEZONE,
+    })} - ${end.toLocaleDateString("en-ZA", {
       day: "numeric",
       month: "short",
       year: "numeric",
+      timeZone: SA_TIMEZONE,
     })}`;
   }
 
-  return start.toLocaleDateString([], {
+  return start.toLocaleDateString("en-ZA", {
     month: "long",
     year: "numeric",
+    timeZone: SA_TIMEZONE,
+  });
+}
+
+function formatMinutesAsHours(minutes: number) {
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hrs}h ${mins}m`;
+}
+
+function formatDateTimeSA(dateString: string) {
+  return new Date(dateString).toLocaleString("en-ZA", {
+    timeZone: SA_TIMEZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -110,12 +133,23 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState(new Date());
 
   const range = useMemo(() => getDateRange(view, selectedDate), [view, selectedDate]);
   const days = useMemo(() => eachDay(range.start, range.end), [range]);
 
   useEffect(() => {
+    setMounted(true);
     loadGuards();
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 60000);
+
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -161,6 +195,19 @@ export default function HistoryPage() {
     return map;
   }, [guards]);
 
+  function getRecordMinutes(record: Attendance) {
+    const start = new Date(record.check_in).getTime();
+
+    if (record.check_out) {
+      const end = new Date(record.check_out).getTime();
+      return Math.max(0, Math.floor((end - start) / 60000));
+    }
+
+    if (!mounted) return 0;
+
+    return Math.max(0, Math.floor((now.getTime() - start) / 60000));
+  }
+
   const roster = useMemo(() => {
     const map: Record<string, Record<string, Attendance[]>> = {};
 
@@ -187,9 +234,7 @@ export default function HistoryPage() {
 
     records.forEach((r) => {
       activeGuards.add(r.guard_id);
-      const start = new Date(r.check_in).getTime();
-      const end = r.check_out ? new Date(r.check_out).getTime() : start;
-      workedMinutes += Math.max(0, Math.floor((end - start) / 60000));
+      workedMinutes += getRecordMinutes(r);
     });
 
     return {
@@ -198,7 +243,7 @@ export default function HistoryPage() {
       shiftRecords: records.length,
       workedHours: Math.floor(workedMinutes / 60),
     };
-  }, [records, guards]);
+  }, [records, guards, mounted, now]);
 
   const rangeLabel = useMemo(
     () => formatRangeLabel(view, range.start, range.end),
@@ -209,10 +254,11 @@ export default function HistoryPage() {
     const header = [
       "Guard",
       ...days.map((d) =>
-        d.toLocaleDateString([], {
+        d.toLocaleDateString("en-ZA", {
           day: "numeric",
           month: "short",
           year: "numeric",
+          timeZone: SA_TIMEZONE,
         })
       ),
       "Total Hours",
@@ -226,27 +272,24 @@ export default function HistoryPage() {
         const entries = roster[g.id]?.[key] || [];
 
         let minutes = 0;
-
         entries.forEach((e) => {
-          const start = new Date(e.check_in).getTime();
-          const end = e.check_out ? new Date(e.check_out).getTime() : start;
-          minutes += Math.max(0, Math.floor((end - start) / 60000));
+          minutes += getRecordMinutes(e);
         });
 
         totalMinutes += minutes;
-        const hours = Math.floor(minutes / 60);
-
-        return minutes > 0 ? `${hours}h` : "-";
+        return minutes > 0 ? formatMinutesAsHours(minutes) : "-";
       });
 
-      return [guardNameMap[g.id] || "Unknown", ...row, `${Math.floor(totalMinutes / 60)}h`];
+      return [
+        guardNameMap[g.id] || "Unknown",
+        ...row,
+        formatMinutesAsHours(totalMinutes),
+      ];
     });
 
     const csv = [header, ...rows]
       .map((row) =>
-        row
-          .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-          .join(",")
+        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
       )
       .join("\n");
 
@@ -566,94 +609,6 @@ export default function HistoryPage() {
               }}
             />
           </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 14px",
-                borderRadius: 999,
-                background: "#f8fafc",
-                border: "1px solid #e5e7eb",
-                fontSize: 14,
-                color: "#334155",
-                fontWeight: 600,
-              }}
-            >
-              <span
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 4,
-                  background: "#dcfce7",
-                  border: "1px solid #86efac",
-                  display: "inline-block",
-                }}
-              />
-              Worked shift
-            </div>
-
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 14px",
-                borderRadius: 999,
-                background: "#f8fafc",
-                border: "1px solid #e5e7eb",
-                fontSize: 14,
-                color: "#334155",
-                fontWeight: 600,
-              }}
-            >
-              <span
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 4,
-                  background: "#f1f5f9",
-                  border: "1px solid #cbd5e1",
-                  display: "inline-block",
-                }}
-              />
-              No recorded shift
-            </div>
-
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 14px",
-                borderRadius: 999,
-                background: "#f8fafc",
-                border: "1px solid #e5e7eb",
-                fontSize: 14,
-                color: "#334155",
-                fontWeight: 600,
-              }}
-            >
-              <span
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 4,
-                  background: "#0ea5e9",
-                  display: "inline-block",
-                }}
-              />
-              Row total hours
-            </div>
-          </div>
         </div>
 
         <div
@@ -786,7 +741,10 @@ export default function HistoryPage() {
                             textTransform: "uppercase",
                           }}
                         >
-                          {d.toLocaleDateString([], { weekday: "short" })}
+                          {d.toLocaleDateString("en-ZA", {
+                            weekday: "short",
+                            timeZone: SA_TIMEZONE,
+                          })}
                         </div>
                         <div
                           style={{
@@ -795,7 +753,10 @@ export default function HistoryPage() {
                             color: "#111827",
                           }}
                         >
-                          {d.getDate()}
+                          {d.toLocaleDateString("en-ZA", {
+                            day: "numeric",
+                            timeZone: SA_TIMEZONE,
+                          })}
                         </div>
                       </th>
                     ))}
@@ -806,7 +767,7 @@ export default function HistoryPage() {
                         padding: "14px 10px",
                         textAlign: "center",
                         borderBottom: "1px solid #e5e7eb",
-                        minWidth: 100,
+                        minWidth: 110,
                       }}
                     >
                       <div
@@ -861,18 +822,11 @@ export default function HistoryPage() {
                           const entries = roster[g.id]?.[key] || [];
 
                           let minutes = 0;
-
                           entries.forEach((e) => {
-                            const start = new Date(e.check_in).getTime();
-                            const end = e.check_out
-                              ? new Date(e.check_out).getTime()
-                              : start;
-
-                            minutes += Math.max(0, Math.floor((end - start) / 60000));
+                            minutes += getRecordMinutes(e);
                           });
 
                           totalMinutes += minutes;
-                          const hours = Math.floor(minutes / 60);
 
                           return (
                             <td
@@ -887,8 +841,22 @@ export default function HistoryPage() {
                                 fontWeight: minutes > 0 ? 800 : 600,
                                 fontSize: 15,
                               }}
+                              title={
+                                entries.length > 0
+                                  ? entries
+                                      .map(
+                                        (e) =>
+                                          `${formatDateTimeSA(e.check_in)} → ${
+                                            e.check_out
+                                              ? formatDateTimeSA(e.check_out)
+                                              : "Still on shift"
+                                          }`
+                                      )
+                                      .join("\n")
+                                  : "No recorded shift"
+                              }
                             >
-                              {minutes > 0 ? `${hours}h` : "-"}
+                              {minutes > 0 ? formatMinutesAsHours(minutes) : "-"}
                             </td>
                           );
                         })}
@@ -904,7 +872,7 @@ export default function HistoryPage() {
                             fontSize: 16,
                           }}
                         >
-                          {Math.floor(totalMinutes / 60)}h
+                          {formatMinutesAsHours(totalMinutes)}
                         </td>
                       </tr>
                     );

@@ -3,25 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
-  { href: "/", label: "Dashboard" },
-  { href: "/admin", label: "Admin" },
-  { href: "/history", label: "History" },
-];
-
 export default function AppNav() {
   const pathname = usePathname();
+
+  const links = [
+    { href: "/", label: "Dashboard" },
+    { href: "/admin", label: "Admin" },
+    { href: "/history", label: "History" },
+  ];
 
   return (
     <nav
       style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
         width: "100%",
-        background: "rgba(15, 23, 42, 0.9)",
-        backdropFilter: "blur(10px)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        background: "#111827",
+        borderBottom: "1px solid #1f2937",
       }}
     >
       <div
@@ -30,8 +26,8 @@ export default function AppNav() {
           margin: "0 auto",
           padding: "14px 20px",
           display: "flex",
-          alignItems: "center",
           justifyContent: "space-between",
+          alignItems: "center",
           gap: 16,
           flexWrap: "wrap",
         }}
@@ -41,7 +37,6 @@ export default function AppNav() {
             color: "white",
             fontWeight: 800,
             fontSize: 18,
-            letterSpacing: -0.4,
           }}
         >
           Naos Attendance
@@ -63,15 +58,12 @@ export default function AppNav() {
                 href={link.href}
                 style={{
                   padding: "10px 14px",
-                  borderRadius: 12,
+                  borderRadius: 10,
                   textDecoration: "none",
                   fontSize: 14,
                   fontWeight: 700,
                   color: active ? "#111827" : "white",
-                  background: active ? "#ffffff" : "rgba(255,255,255,0.10)",
-                  border: active
-                    ? "1px solid #ffffff"
-                    : "1px solid rgba(255,255,255,0.08)",
+                  background: active ? "white" : "#1f2937",
                 }}
               >
                 {link.label}
